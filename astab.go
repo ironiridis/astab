@@ -9,31 +9,15 @@ import (
 
 type renderer struct {
 	colwidth []int
-	rows     [][]string
+	rows     [][]*string
 }
 
-func (r *renderer) str(row, col int, val string) {
-	if r.colwidth == nil {
-		r.colwidth = make([]int, col+1)
-	}
-	for len(r.colwidth) <= col {
-		r.colwidth = append(r.colwidth, 0)
-	}
-	if r.colwidth[col] < len(val) {
-		r.colwidth[col] = len(val)
-	}
-
-	if r.rows == nil {
-		r.rows = make([][]string, row)
-	}
-	for len(r.rows) <= row {
-		r.rows = append(r.rows, []string{})
+func (r *renderer) str(row, col int, val *string) {
+	if r.colwidth[col] < len(*val) {
+		r.colwidth[col] = len(*val)
 	}
 	if r.rows[row] == nil {
-		r.rows[row] = make([]string, col+1)
-	}
-	for len(r.rows[row]) <= col {
-		r.rows[row] = append(r.rows[row], "")
+		r.rows[row] = make([]*string, len(r.colwidth))
 	}
 	r.rows[row][col] = val
 }
@@ -42,26 +26,24 @@ func (r *renderer) write(w io.Writer) {
 	for row := range r.rows {
 		for col := range r.rows[row] {
 			if col > 0 {
-				fmt.Fprint(w, " ")
+				w.Write([]byte(" "))
 			}
-			fmt.Fprintf(w, "%s%s",
-				r.rows[row][col],
-				strings.Repeat(" ", r.colwidth[col]-len(r.rows[row][col])))
+			w.Write([]byte(*r.rows[row][col]))
+			w.Write([]byte(strings.Repeat(" ", r.colwidth[col]-len(*r.rows[row][col]))))
 		}
-		fmt.Fprint(w, "\n")
+		w.Write([]byte("\n"))
 	}
 }
 
 // Write takes a slice of structs, calculates the maximum string width of each
 // exported struct field value, and renders a table to write to any io.Writer.
 func Write(w io.Writer, slice interface{}) error {
-	r := renderer{}
-	exported := []int{}
-
 	slcv := reflect.ValueOf(slice)
 	if slcv.Kind() != reflect.Slice {
 		return fmt.Errorf("expected slice, got %s", slcv.Kind())
 	}
+	r := renderer{rows: make([][]*string, 1+slcv.Len())}
+	exported := []int{}
 
 	{
 		el := slcv.Type().Elem()
@@ -77,16 +59,18 @@ func Write(w io.Writer, slice interface{}) error {
 		if len(exported) == 0 {
 			return fmt.Errorf("struct %q does not have exported fields", el)
 		}
+		r.colwidth = make([]int, len(exported))
 		for j := 0; j < len(exported); j++ {
-			r.str(0, j, el.Field(exported[j]).Name)
+			s := el.Field(exported[j]).Name
+			r.str(0, j, &s)
 		}
 	}
 	for j := 0; j < slcv.Len(); j++ {
 		for k := 0; k < len(exported); k++ {
-			r.str(j+1, k, fmt.Sprint(slcv.Index(j).Field(exported[k]).Interface()))
+			s := fmt.Sprint(slcv.Index(j).Field(exported[k]).Interface())
+			r.str(j+1, k, &s)
 		}
 	}
-	//fmt.Fprintf(w, "%#v\n", r)
 	r.write(w)
 	return nil
 }
