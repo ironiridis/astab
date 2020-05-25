@@ -43,27 +43,24 @@ func Write(w io.Writer, slice interface{}) error {
 		return fmt.Errorf("expected slice, got %s", slcv.Kind())
 	}
 	r := renderer{rows: make([][]*string, 1+slcv.Len())}
-	exported := []int{}
 
-	{
-		el := slcv.Type().Elem()
-		if el.Kind() != reflect.Struct {
-			return fmt.Errorf("expected slice of struct, got slice of %s", el.Kind())
+	el := slcv.Type().Elem()
+	if el.Kind() != reflect.Struct {
+		return fmt.Errorf("expected slice of struct, got slice of %s", el.Kind())
+	}
+	exported := make([]int, 0, el.NumField())
+	for j := 0; j < el.NumField(); j++ {
+		if el.Field(j).PkgPath == "" {
+			exported = append(exported, j)
 		}
-
-		for j := 0; j < el.NumField(); j++ {
-			if el.Field(j).PkgPath == "" {
-				exported = append(exported, j)
-			}
-		}
-		if len(exported) == 0 {
-			return fmt.Errorf("struct %q does not have exported fields", el)
-		}
-		r.colwidth = make([]int, len(exported))
-		for j := 0; j < len(exported); j++ {
-			s := el.Field(exported[j]).Name
-			r.str(0, j, &s)
-		}
+	}
+	if len(exported) == 0 {
+		return fmt.Errorf("struct %q does not have exported fields", el)
+	}
+	r.colwidth = make([]int, len(exported))
+	for j := 0; j < len(exported); j++ {
+		s := el.Field(exported[j]).Name
+		r.str(0, j, &s)
 	}
 	for j := 0; j < slcv.Len(); j++ {
 		for k := 0; k < len(exported); k++ {
